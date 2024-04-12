@@ -3,32 +3,32 @@ import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, PollHandler, filters, ContextTypes
 from config import BOT_TOKEN, FACT_CHECKER_GROUP_ID
+from gemini import sendPrompt
 
 # Dictionary to store active polls and their expiration times
 active_polls = {}
 
 
-# TODO: Integrate ChatGPT for fact-checking, now its just a placeholder function
-async def chatgpt_fact_check(message: str) -> str:
-    # Placeholder function for ChatGPT integration
-    response = "This is a placeholder response from ChatGPT."
-    return response
-
 # Commands
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('Hello! Thanks for chatting with me. I am a fact checker. Send a message to fact check.')
 
-async def process_factcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     # Fact-check the user message using ChatGPT
-    chatgpt_response = await chatgpt_fact_check(user_message)
+    gemini_response = await sendPrompt(user_message)
 
     # Notify the user about the results from ChatGPT and inform about further fact-checking
-    await update.message.reply_text(
-         f'This is the result of fact-checking with ChatGPT:\n\n{chatgpt_response}\n\n'
-        'Meanwhile, we will also fact-check with real people.'
-    )
-    
+    if gemini_response is not None:
+        await update.message.reply_text(
+            f'This is the result of fact-checking with Gemini:\n\n{gemini_response}\n\n'
+            'Meanwhile, we will fact-check with real people.'
+        )
+    else:
+        await update.message.reply_text(
+            f'Sorry, there was an error when querying gemini.\n\n'
+            'Meanwhile, we will fact-check with real people.'
+        )
     # Start a poll in a specified group
     poll_message = await context.bot.sendPoll(
         chat_id = FACT_CHECKER_GROUP_ID,
@@ -68,7 +68,7 @@ async def check_expired_polls(bot):
             if total_votes > 0:
                 percentage_true = (true_count / total_votes) * 100
                 reply_message = (
-                    f'The poll for the message: {original_message} has ended.\n\n'
+                    f'The poll for the message: \n{original_message}\n has ended.\n\n'
                     f'Here are the results:\n'
                     f'True: {true_count} votes\n'
                     f'False: {false_count} votes\n'
@@ -102,7 +102,7 @@ if __name__ == '__main__':
     print("Starting bot...")
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler('start', start_command))
-    app.add_handler(MessageHandler(filters.TEXT & ~ filters.COMMAND , process_factcheck))
+    app.add_handler(MessageHandler(filters.TEXT & ~ filters.COMMAND , process_text))
     app.add_handler(PollHandler(handle_poll)) # We will use this to send the poll result after each user adds to the poll, as i cant seem to find a method to get the poll results from the poll message id after it expires
      
     loop = asyncio.get_event_loop() # Create a task for the check_expired_polls coroutine and run it in the event loop
